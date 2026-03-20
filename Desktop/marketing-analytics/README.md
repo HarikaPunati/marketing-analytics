@@ -1,6 +1,6 @@
 # Marketing Analytics — Multi-Platform Ad Performance
 
-A end-to-end marketing analytics project that consolidates ad performance data from Facebook, Google, and TikTok into a single unified view using PostgreSQL, then visualizes key metrics in Tableau.
+An end-to-end marketing analytics project that consolidates ad performance data from Facebook, Google, and TikTok into a single unified view using PostgreSQL, then visualizes key metrics in Tableau.
 
 ---
 
@@ -10,12 +10,21 @@ Paid media data lives in silos. Each platform exports different schemas, uses di
 
 ---
 
+## Dataset
+
+- Date range: January 1–30, 2024
+- 330 total rows across 3 platforms (110 rows each)
+- 12 campaigns total (4 per platform)
+- No missing values across any column
+
+---
+
 ## Tools & Technologies
 
 | Layer | Tool |
 |---|---|
 | Data Storage & Querying | PostgreSQL |
-| Data Transformation | SQL (Views, UNION ALL) |
+| Data Transformation | SQL (Views, CTEs, UNION ALL) |
 | Visualization | Tableau |
 | Data Sources | Facebook Ads, Google Ads, TikTok Ads |
 
@@ -35,13 +44,18 @@ Paid media data lives in silos. Each platform exports different schemas, uses di
 
 - Creates platform-specific tables for Facebook, Google, and TikTok
 - Normalizes column names across platforms (e.g., `spend` → `cost`, `ad_set_id` → `ad_group_id`)
-- Builds a unified view (`unified_ads`) combining all three platforms via `UNION ALL`
-- Runs data quality checks: null counts, date range validation, row count by platform
+- Uses a CTE to build a clean base layer via `UNION ALL`, then computes derived metrics on top
+- Computes derived metrics directly in the view: CTR, CPC, CPM, CVR, CPA — using `NULLIF` to prevent divide-by-zero errors
+- Platform-specific columns are intentionally excluded from the unified view to maintain a consistent cross-platform schema — query the raw tables directly for platform-specific analysis:
+  - **Facebook:** `engagement_rate`, `reach`, `frequency`
+  - **Google:** `quality_score`, `conversion_value`, `search_impression_share`
+  - **TikTok:** video completion rates (25/50/75/100%), `likes`, `shares`, `comments`
+- Separate QC script (`Marketing_qc_checks.sql`) validates row counts, date ranges, null checks, and derived metric integrity after loading
 
 ### Unified View Schema
 
 ```sql
-date | platform | campaign_id | campaign_name | ad_group_id | ad_group_name | impressions | clicks | cost | conversions
+date | platform | campaign_id | campaign_name | ad_group_id | ad_group_name | impressions | clicks | cost | conversions | ctr | cpc | cpm | cvr | cpa
 ```
 
 ---
@@ -67,6 +81,15 @@ The Tableau workbook (`Marketing_Analytics_Tableau.twbx`) connects to the unifie
 
 ---
 
+## Key Findings
+
+- Facebook had the lowest CPA at $7.64 despite the smallest budget ($18K), making it the most cost-efficient platform for conversions
+- TikTok drove the highest volume (28M impressions, 461K clicks) at the cheapest CPC ($0.16) but had the worst CPA at $11.00
+- Google sat in the middle on all metrics — higher spend ($37K) with consistent conversion volume (4,218 conversions) and a CPA of $8.93
+- Across all platforms, CTR was consistent (~1.6–2.0%), suggesting click quality rather than reach was the key differentiator in conversion efficiency
+
+---
+
 ## Project Structure
 
 ```
@@ -77,13 +100,12 @@ marketing-analytics/
 ├── 03_tiktok_ads.csv
 ├── Unified_ads.csv
 ├── Marketing_project.sql
+├── Marketing_qc_checks.sql
 ├── Marketing_Analytics_Tableau.twbx
 └── README.md
 ```
 
 ---
-
-## Author
 
 **Harika Punati**  
 Data Analyst | SQL · Python · Power BI · Tableau  
