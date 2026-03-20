@@ -1,87 +1,106 @@
--- Facebook
+-- ============================================================
+-- Marketing Analytics — Multi-Platform Ad Performance
+-- Author: Harika Punati
+-- Description: Creates platform tables and a unified view
+--              combining Facebook, Google, and TikTok ad data
+--              with derived performance metrics.
+-- ============================================================
 
-create table if not exists public.facebook_ads (
-  date date,
-  campaign_id text,
-  campaign_name text,
-  ad_set_id text,
-  ad_set_name text,
-  impressions bigint,
-  clicks bigint,
-  spend numeric,
-  conversions bigint,
-  video_views bigint,
-  engagement_rate numeric,
-  reach bigint,
-  frequency numeric
+
+-- ------------------------------------------------------------
+-- SECTION 1: Table Definitions
+-- ------------------------------------------------------------
+CREATE TABLE IF NOT EXISTS public.facebook_ads (
+  date               DATE,
+  campaign_id        TEXT,
+  campaign_name      TEXT,
+  ad_set_id          TEXT,
+  ad_set_name        TEXT,
+  impressions        BIGINT,
+  clicks             BIGINT,
+  spend              NUMERIC,
+  conversions        BIGINT,
+  video_views        BIGINT,
+  engagement_rate    NUMERIC,
+  reach              BIGINT,
+  frequency          NUMERIC
 );
 
--- Google
-
-create table if not exists public.google_ads (
-  date date,
-  campaign_id text,
-  campaign_name text,
-  ad_group_id text,
-  ad_group_name text,
-  impressions bigint,
-  clicks bigint,
-  cost numeric,
-  conversions bigint,
-  conversion_value numeric,
-  ctr numeric,
-  avg_cpc numeric,
-  quality_score integer,
-  search_impression_share numeric
+CREATE TABLE IF NOT EXISTS public.google_ads (
+  date                      DATE,
+  campaign_id               TEXT,
+  campaign_name             TEXT,
+  ad_group_id               TEXT,
+  ad_group_name             TEXT,
+  impressions               BIGINT,
+  clicks                    BIGINT,
+  cost                      NUMERIC,
+  conversions               BIGINT,
+  conversion_value          NUMERIC,
+  ctr                       NUMERIC,
+  avg_cpc                   NUMERIC,
+  quality_score             INTEGER,
+  search_impression_share   NUMERIC
 );
 
--- TikTok
-
-create table if not exists public.tiktok_ads (
-  date date,
-  campaign_id text,
-  campaign_name text,
-  adgroup_id text,
-  adgroup_name text,
-  impressions bigint,
-  clicks bigint,
-  cost numeric,
-  conversions bigint,
-  video_views bigint,
-  video_watch_25 bigint,
-  video_watch_50 bigint,
-  video_watch_75 bigint,
-  video_watch_100 bigint,
-  likes bigint,
-  shares bigint,
-  comments bigint
+CREATE TABLE IF NOT EXISTS public.tiktok_ads (
+  date              DATE,
+  campaign_id       TEXT,
+  campaign_name     TEXT,
+  adgroup_id        TEXT,
+  adgroup_name      TEXT,
+  impressions       BIGINT,
+  clicks            BIGINT,
+  cost              NUMERIC,
+  conversions       BIGINT,
+  video_views       BIGINT,
+  video_watch_25    BIGINT,
+  video_watch_50    BIGINT,
+  video_watch_75    BIGINT,
+  video_watch_100   BIGINT,
+  likes             BIGINT,
+  shares            BIGINT,
+  comments          BIGINT
 );
 
 
-select * from facebook_ads;
+-- ------------------------------------------------------------
+-- SECTION 2: Unified View
+--
+-- Normalizes column names across all three platforms and
+-- computes derived metrics: CTR, CPC, CPM, CVR, CPA.
+--
+-- Note: Platform-specific columns (e.g. Facebook engagement_rate,
+-- Google quality_score, TikTok video completion rates) are
+-- intentionally excluded from this unified view to maintain a
+-- consistent cross-platform schema. Query the raw tables directly
+-- for platform-specific analysis.
+-- ------------------------------------------------------------
 
-create or replace view public.unified_ads as
+CREATE OR REPLACE VIEW public.unified_ads AS
 
--- Facebook
-select
+WITH base AS (
+
+  -- Facebook
+  SELECT
     date,
-    'facebook' as platform,
+    'facebook'              AS platform,
     campaign_id,
     campaign_name,
-    ad_set_id as ad_group_id,
-    ad_set_name as ad_group_name,
+    ad_set_id               AS ad_group_id,
+    ad_set_name             AS ad_group_name,
     impressions,
     clicks,
-    spend as cost,
+    spend                   AS cost,
     conversions
-from public.facebook_ads
+  FROM public.facebook_ads
 
-union all
+  UNION ALL
 
--- Google
-select
+  -- Google
+  SELECT
     date,
-    'google',
+    'google'                AS platform,
     campaign_id,
     campaign_name,
     ad_group_id,
@@ -90,106 +109,44 @@ select
     clicks,
     cost,
     conversions
-from public.google_ads
+  FROM public.google_ads
 
-union all
+  UNION ALL
 
--- TikTok
-select
+  -- TikTok
+  SELECT
     date,
-    'tiktok',
+    'tiktok'                AS platform,
     campaign_id,
     campaign_name,
-    adgroup_id as ad_group_id,
-    adgroup_name as ad_group_name,
+    adgroup_id              AS ad_group_id,
+    adgroup_name            AS ad_group_name,
     impressions,
     clicks,
     cost,
     conversions
-from public.tiktok_ads;
+  FROM public.tiktok_ads
 
+)
 
+SELECT
+  date,
+  platform,
+  campaign_id,
+  campaign_name,
+  ad_group_id,
+  ad_group_name,
+  impressions,
+  clicks,
+  cost,
+  conversions,
 
+  -- Derived metrics
+  -- NULLIF(..., 0) prevents divide-by-zero errors
+  ROUND(clicks::NUMERIC / NULLIF(impressions, 0), 4)          AS ctr,
+  ROUND(cost / NULLIF(clicks, 0), 2)                          AS cpc,
+  ROUND((cost / NULLIF(impressions, 0)) * 1000, 2)            AS cpm,
+  ROUND(conversions::NUMERIC / NULLIF(clicks, 0), 4)          AS cvr,
+  ROUND(cost / NULLIF(conversions, 0), 2)                     AS cpa
 
-select platform, count(*)
-from public.unified_ads
-group by 1;
-
-select min(date), max(date), count(*) 
-from public.unified_ads;
-
-select
-  sum(case when impressions is null then 1 else 0 end) as missing_impressions,
-  sum(case when clicks is null then 1 else 0 end) as missing_clicks,
-  sum(case when cost is null then 1 else 0 end) as missing_cost,
-  sum(case when conversions is null then 1 else 0 end) as missing_conversions
-from public.unified_ads;
-
-
-
-
-
-
-
-select table_type
-from information_schema.tables
-where table_schema = 'public'
-and table_name = 'unified_ads';
-
-
-drop table public.unified_ads;
-
-
-create or replace view public.unified_ads as
-
-select
-    date,
-    'facebook' as platform,
-    campaign_id,
-    campaign_name,
-    ad_set_id as ad_group_id,
-    ad_set_name as ad_group_name,
-    impressions,
-    clicks,
-    spend as cost,
-    conversions
-from public.facebook_ads
-
-union all
-
-select
-    date,
-    'google',
-    campaign_id,
-    campaign_name,
-    ad_group_id,
-    ad_group_name,
-    impressions,
-    clicks,
-    cost,
-    conversions
-from public.google_ads
-
-union all
-
-select
-    date,
-    'tiktok',
-    campaign_id,
-    campaign_name,
-    adgroup_id as ad_group_id,
-    adgroup_name as ad_group_name,
-    impressions,
-    clicks,
-    cost,
-    conversions
-from public.tiktok_ads;
-
-
-
-select * 
-from public.unified_ads;
-
-
-
-
+FROM base;
